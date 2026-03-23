@@ -62,7 +62,7 @@ parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 parser.add_argument('--summary_freq', type=int, default=50, help='print and summary frequency')
 parser.add_argument('--save_freq', type=int, default=1, help='save checkpoint frequency')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed')
-parser.add_argument('--gpu_id', type=str, default="1")
+parser.add_argument('--gpu_id', type=str, default="0")
 
 # parse arguments and check
 args = parser.parse_args()
@@ -266,7 +266,7 @@ def test():
         mask = sample['mask']['stage3']
 
         depth_gt = np.float32(np.squeeze(tensor2numpy(depth_gt)))
-        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int)
+        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int64)
 
         depth_gt[mask < 0.5] = -999.0
 

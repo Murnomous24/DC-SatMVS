@@ -30,7 +30,7 @@ parser.add_argument('--geo_model', default="pinhole", help='select dataset', cho
 parser.add_argument('--use_qc', default=False, help="whether to use Quaternary Cubic Form for RPC warping.")
 # parser.add_argument('--dataset_root', default='/home/chenziyang/MVS/MVSrs', help='dataset root')
 parser.add_argument('--dataset_root', default='/remote-home/Cs_ai_qj_new/chenziyang/MVS/MVSrs/WHU_MVS_dataset', help='dataset root')
-# parser.add_argument('--which', default='WHU', choices=['WHU', 'TLC'], help='dataset type')
+parser.add_argument('--which', default='WHU', choices=['WHU', 'TLC'], help='dataset type')
 
 # parser.add_argument('--loadckpt', default="checkpoints/casmvs/rpc/model.ckpt", help='load a specific checkpoint')
 parser.add_argument('--loadckpt', help='load a specific checkpoint')
@@ -105,7 +105,6 @@ print_args(args)
 
 # dataset, dataloader
 MVSDataset = find_dataset_def(args.geo_model)
-# print('!!!!!!',args.which)
 train_dataset = MVSDataset(trainpath, "train", args.which, args.view_num, ref_view=args.ref_view, use_qc=args.use_qc)
 test_dataset = MVSDataset(testpath, "test", args.which, args.view_num, ref_view=args.ref_view, use_qc=args.use_qc)
 TrainImgLoader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=0, drop_last=True)
@@ -270,7 +269,7 @@ def test():
         mask = sample['mask']['stage3']
 
         depth_gt = np.float32(np.squeeze(tensor2numpy(depth_gt)))
-        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int)
+        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int64)
 
         depth_gt[mask < 0.5] = -999.0
 
@@ -313,6 +312,7 @@ def train_sample(sample, lr_scheduler, detailed_summary=False):
     if detailed_summary:
         image_outputs["errormap"] = (depth_est - depth_gt).abs() * mask
         scalar_outputs["abs_depth_error"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
+        scalar_outputs["RMSE"] = RMSE_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
         scalar_outputs["thres1.0m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
         scalar_outputs["thres2.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
         scalar_outputs["thres7.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)

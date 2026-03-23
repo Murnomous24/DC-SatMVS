@@ -1,0 +1,40 @@
+# DC-SatMVS Requirements for Python 3.10
+# ======================================
+
+# PyTorch (CUDA 11.8)
+torch==2.1.0
+torchvision==0.16.0
+torchaudio==2.1.0
+
+# GDAL - 地理数据处理
+gdal==3.4.1
+
+# 深度学习相关
+tensorboard==2.20.0
+tensorboardX==2.6.4
+numpy==1.26.4
+einops>=0.6.0
+
+# 图像处理
+opencv-python==4.10.0.84
+Pillow>=9.3.0
+imageio==2.37.2
+matplotlib==3.10.7
+
+# 数据处理
+scipy==1.15.3
+numpy_groupies
+
+# GPU 加速
+cupy-cuda11x==13.6.0
+
+# 点云处理
+plyfile==1.1.3
+pylas==0.4.3
+
+# 工具库
+pyyaml==6.0.3
+tqdm==4.67.1
+networkx==3.4.2
+protobuf==6.33.0
+requests==2.32.5

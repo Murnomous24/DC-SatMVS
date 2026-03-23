@@ -21,8 +21,9 @@ def homo_warping(src_fea, src_proj, ref_proj, depth_values):
         rot = proj[:, :3, :3]  # [B,3,3]
         trans = proj[:, :3, 3:4]  # [B,3,1]
 
-        y, x = torch.meshgrid([torch.arange(0, height, dtype=torch.float32, device=src_fea.device),
-                               torch.arange(0, width, dtype=torch.float32, device=src_fea.device)])
+        y, x = torch.meshgrid(torch.arange(0, height, dtype=torch.float32, device=src_fea.device),
+                               torch.arange(0, width, dtype=torch.float32, device=src_fea.device),
+                               indexing='ij')
         y, x = y.contiguous(), x.contiguous()
         y, x = y.view(height * width), x.view(height * width)
         xyz = torch.stack((x, y, torch.ones_like(x))).double()  # [3, H*W]
@@ -149,8 +150,9 @@ def rpc_warping_enisum(src_fea, src_rpc, ref_rpc, depth_values):
     height, width = src_fea.shape[2], src_fea.shape[3]
 
     with torch.no_grad():
-        y, x = torch.meshgrid([torch.arange(0, height, dtype=torch.double, device=src_fea.device),
-                               torch.arange(0, width, dtype=torch.double, device=src_fea.device)])
+        y, x = torch.meshgrid(torch.arange(0, height, dtype=torch.double, device=src_fea.device),
+                               torch.arange(0, width, dtype=torch.double, device=src_fea.device),
+                               indexing='ij')
 
         x = x.repeat(batch, num_depth, 1, 1)
         y = y.repeat(batch, num_depth, 1, 1)
@@ -320,8 +322,9 @@ def rpc_warping(src_fea, src_rpc, ref_rpc, depth_values, coef):
     height, width = src_fea.shape[2], src_fea.shape[3]
 
     with torch.no_grad():
-        y, x = torch.meshgrid([torch.arange(0, height, dtype=torch.double, device=src_fea.device),
-                               torch.arange(0, width, dtype=torch.double, device=src_fea.device)])
+        y, x = torch.meshgrid(torch.arange(0, height, dtype=torch.double, device=src_fea.device),
+                               torch.arange(0, width, dtype=torch.double, device=src_fea.device),
+                               indexing='ij')
         y, x = y.contiguous(), x.contiguous()
         y = y.view(1, 1, height, width).repeat(batch, num_depth, 1, 1) # (B, ndepth, H, W)
         x = x.view(1, 1, height, width).repeat(batch, num_depth, 1, 1)

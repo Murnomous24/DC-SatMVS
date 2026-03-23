@@ -55,8 +55,8 @@ def Test2():
     A = np.array([[5, -2, -1, -2],
                   [-2, 5, -1, -2],
                   [-1, -1, 3, -1],
-                  [-2, -2, -1, 5]], np.float)
-    l = np.array([-11, 10, -2, 3], np.float)
+                  [-2, -2, -1, 5]], np.float64)
+    l = np.array([-11, 10, -2, 3], np.float64)
     x, times = solve_iccv(A, l)
     print(x)
     print("finished in iteration ", times)

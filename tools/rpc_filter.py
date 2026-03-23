@@ -17,7 +17,7 @@ def reproject_with_depth(depth_ref, rpc_ref, depth_src, rpc_src):
     x_ref, y_ref = x_ref.reshape([-1]), y_ref.reshape([-1])
 
     # t1 = time.time()
-    lat, lon = rpc_model_ref.RPC_PHOTO2OBJ(x_ref.astype(np.float), y_ref.astype(np.float), depth_ref.reshape([-1]))
+    lat, lon = rpc_model_ref.RPC_PHOTO2OBJ(x_ref.astype(np.float64), y_ref.astype(np.float64), depth_ref.reshape([-1]))
     # t2 = time.time()
     # source view x, y
     x_src, y_src = rpc_model_src.RPC_OBJ2PHOTO(lat, lon, depth_ref.reshape([-1]))
@@ -39,7 +39,7 @@ def reproject_with_depth(depth_ref, rpc_ref, depth_src, rpc_src):
 
     # source 3D space
     # NOTE that we should use sampled source-view depth_here to project back
-    lat, lon = rpc_model_src.RPC_PHOTO2OBJ(x_src.astype(np.float).reshape(-1), y_src.astype(np.float).reshape(-1),
+    lat, lon = rpc_model_src.RPC_PHOTO2OBJ(x_src.astype(np.float64).reshape(-1), y_src.astype(np.float64).reshape(-1),
                              sampled_depth_src.reshape(-1))
     # reference 3D space
     x_reprojected, y_reprojected = rpc_model_ref.RPC_OBJ2PHOTO(lat, lon, sampled_depth_src.reshape(-1))

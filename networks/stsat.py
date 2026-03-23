@@ -226,24 +226,20 @@ def frequency_domain_filter(depth, rho_ratio):
     """
     large rho_ratio -> more information filtered
     """
-    # f = torch.fft.fft2(depth)
-    f = torch.rfft(depth, signal_ndim=2, normalized=False, onesided=False)
-    # print('f',f.shape)
-    # fshift = torch.fft.fftshift(f)
-    fshift = fftshift(f, dim=(-2, -1))
-    # print('f2',fshift.shape)
+    # 使用新的 torch.fft API (PyTorch 1.8+)
+    f = torch.fft.fft2(depth)
+    fshift = torch.fft.fftshift(f, dim=(-2, -1))
 
     b, h, w = depth.shape
     k_h, k_w = h/rho_ratio, w/rho_ratio
-    # print('k',k_h,k_w)
 
     # 确定对称地设置为零的范围
     h_start, h_end = int(h / 2 - k_h / 2), int(h / 2 + k_h / 2)
     w_start, w_end = int(w / 2 - k_w / 2), int(w / 2 + k_w / 2)
 
     # 通过将正负分量都设置为零来确保对称性
-    fshift[:, :h_start, :] = 0
-    fshift[:, h_end:, :] = 0
+    fshift[:, :h_start] = 0
+    fshift[:, h_end:] = 0
     fshift[:, :, :w_start] = 0
     fshift[:, :, w_end:] = 0
 
@@ -252,13 +248,9 @@ def frequency_domain_filter(depth, rho_ratio):
         fshift[:, int(h / 2), :] = 0
     if w % 2 != 0:
         fshift[:, :, int(w / 2)] = 0
-    # print('f3',fshift.shape)
-    # ishift = torch.fft.ifftshift(fshift)
-    ishift = ifftshift(fshift, dim=(-2, -1))
-    # print('f4',ishift.shape)
-    # idepth = torch.fft.ifft2(ishift)
-    idepth = torch.irfft(ishift, signal_ndim=2, normalized=False, onesided=False)
-    # print('idepth',idepth.shape)
+
+    ishift = torch.fft.ifftshift(fshift, dim=(-2, -1))
+    idepth = torch.fft.ifft2(ishift)
     depth_filtered = torch.abs(idepth)
 
     return depth_filtered
@@ -267,23 +259,20 @@ def frequency_domain_filter1(depth, rho_ratio):
     """
     large rho_ratio -> more information filtered
     """
-    # f = torch.fft.fft2(depth)
-    f = torch.rfft(depth, signal_ndim=2)
-    # fshift = torch.fft.fftshift(f)
-    fshift = fftshift(f, dim=(-2, -1))
+    # 使用新的 torch.fft API (PyTorch 1.8+)
+    f = torch.fft.fft2(depth)
+    fshift = torch.fft.fftshift(f, dim=(-2, -1))
 
     b, h, w = depth.shape
     k_h, k_w = h/rho_ratio, w/rho_ratio
 
-    fshift[:,:int(h/2-k_h/2),:] = 0
-    fshift[:,int(h/2+k_h/2):,:] = 0
+    fshift[:,:int(h/2-k_h/2)] = 0
+    fshift[:,int(h/2+k_h/2):] = 0
     fshift[:,:,:int(w/2-k_w/2)] = 0
     fshift[:,:,int(w/2+k_w/2):] = 0
 
-    # ishift = torch.fft.ifftshift(fshift)
-    ishift = ifftshift(fshift, dim=(-2, -1))
-    # idepth = torch.fft.ifft2(ishift)
-    idepth = torch.irfft(ishift, signal_ndim=2)
+    ishift = torch.fft.ifftshift(fshift, dim=(-2, -1))
+    idepth = torch.fft.ifft2(ishift)
     depth_filtered = torch.abs(idepth)
 
     return depth_filtered

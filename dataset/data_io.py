@@ -68,7 +68,7 @@ def save_pfm(file, image, scale=1):
 
     file.write(bytes('%f\n' % scale, encoding='utf8'))
 
-    image_string = image.tostring()
+    image_string = image.tobytes()
     file.write(image_string)
 
     file.close()
@@ -273,7 +273,7 @@ def read_tfw(path):
     finally:
         file_object.close()
 
-    tfw = np.array(all_the_text, dtype=np.float)
+    tfw = np.array(all_the_text, dtype=np.float64)
 
     if tfw.shape[0] != 6:
         raise Exception("6 parameters excepted in the tfw file, but got {}.".format(tfw.shape[0]))

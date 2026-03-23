@@ -191,7 +191,7 @@ if __name__ == "__main__":
     hei_ref = heights[0].reshape([-1])
 
     start = time.time()
-    lat, lon = ref_rpc.RPC_PHOTO2OBJ(x_ref.astype(np.float), y_ref.astype(np.float), hei_ref)
+    lat, lon = ref_rpc.RPC_PHOTO2OBJ(x_ref.astype(np.float64), y_ref.astype(np.float64), hei_ref)
     print(lat, lon)
 
     samp, line = src_rpc.RPC_OBJ2PHOTO(lat, lon, hei_ref)

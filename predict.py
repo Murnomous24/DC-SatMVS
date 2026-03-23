@@ -132,7 +132,7 @@ def predict():
         depth_gt = sample['depth']['stage3']
         mask = sample['mask']['stage3']
         depth_gt = np.float32(np.squeeze(tensor2numpy(depth_gt)))
-        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int)
+        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int64)
         depth_gt[mask < 0.5] = -999.0
 
         # paths
