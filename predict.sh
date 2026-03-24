@@ -17,7 +17,7 @@ GEO_MODEL="rpc"                   # 几何模型: rpc, pinhole
 GPU_ID="0"                        # GPU ID
 
 # 数据配置
-DATASET_ROOT="/path/to/your/dataset/open_dataset_rpc/test"  # 数据集路径 (请修改为实际路径)
+DATASET_ROOT="/home/murph_dl/Paper_Re/SatMVS_Re/data/whu_tlc"  # 数据集路径
 
 # 模型检查点
 LOAD_CKPT="./checkpoints/samsat/rpc/model_000012.ckpt"  # 模型检查点路径

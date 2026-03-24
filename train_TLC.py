@@ -71,8 +71,8 @@ args = parser.parse_args()
 
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
-trainpath = "{}/open_dataset_{}/train".format(args.dataset_root, args.geo_model)
-testpath = "{}/open_dataset_{}/test".format(args.dataset_root, args.geo_model)
+trainpath = "{}/train".format(args.dataset_root)
+testpath = "{}/test".format(args.dataset_root)
 
 if args.resume:
     assert args.mode == "train"
@@ -111,7 +111,7 @@ TestImgLoader = DataLoader(test_dataset, args.batch_size, shuffle=False, num_wor
 
 # model
 model = None
-if args.model == "samsat":
+if args.model == "SAMsat":
     model = ST_SatMVS(min_interval=args.min_interval,
                           ndepths=[int(nd) for nd in args.ndepths.split(",") if nd],
                           depth_interals_ratio=[float(d_i) for d_i in args.depth_inter_r.split(",") if d_i],

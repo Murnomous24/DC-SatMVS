@@ -12,16 +12,16 @@
 USE_TQDM=false
 
 # 基础配置
-MODEL="samsat"                    # 模型类型: samsat, red, casmvs, ucs
+MODEL="SAMsat"                    # 模型类型: SAMsat, red, casmvs, ucs
 GEO_MODEL="rpc"                   # 几何模型: rpc, pinhole
 GPU_ID="0"                        # GPU ID
 
 # 数据配置
-DATASET_ROOT="/remote-home/Cs_ai_qj_new/chenziyang/MVS/MVSrs"  # 数据集根目录
+DATASET_ROOT="/home/murph_dl/Paper_Re/SatMVS_Re/data/whu_tlc"  # 数据集根目录
 LOG_DIR="./checkpoints"           # 日志和检查点保存目录
 
 # 训练超参数
-BATCH_SIZE=2                      # 批大小
+BATCH_SIZE=1                      # 批大小
 EPOCHS=15                         # 训练轮数
 LR=0.001                          # 学习率
 SEED=1                            # 随机种子
