@@ -17,6 +17,7 @@ import time
 from tools.utils import *
 from dataset.data_io import save_pfm
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 cudnn.benchmark = True
 
@@ -41,6 +42,7 @@ parser.add_argument('--depth_inter_r', type=str, default="4,2,1", help='depth_in
 parser.add_argument('--lamb', type=float, default=1.5, help="lamb in ucs-net")
 parser.add_argument('--cr_base_chs', type=str, default="8,8,8", help='cost regularization base channels')
 parser.add_argument('--gpu_id', type=str, default="2")
+parser.add_argument('--use_tqdm', action='store_true', help='use tqdm progress bar instead of plain log output')
 
 # parse arguments and check
 args = parser.parse_args()
@@ -113,7 +115,13 @@ def predict():
 
     idx = 0
     total_time = 0
-    for batch_idx, sample in enumerate(Pre_ImgLoader):
+
+    if args.use_tqdm:
+        pred_iter = tqdm(enumerate(Pre_ImgLoader), total=len(Pre_ImgLoader), desc="Predicting")
+    else:
+        pred_iter = enumerate(Pre_ImgLoader)
+
+    for batch_idx, sample in pred_iter:
         bview = sample['out_view'][0]
         bname = sample['out_name'][0]
 
@@ -122,7 +130,11 @@ def predict():
         avg_test_scalars.update(scalar_outputs)
         scalar_outputs = {k: float("{0:.6f}".format(v)) for k, v in scalar_outputs.items()}
         total_time += time.time() - start_time
-        print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(Pre_ImgLoader), bname, time.time() - start_time, scalar_outputs))
+
+        if args.use_tqdm:
+            pred_iter.set_postfix({'name': bname, 'time': f'{time.time() - start_time:.3f}'})
+        else:
+            print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(Pre_ImgLoader), bname, time.time() - start_time, scalar_outputs))
 
         # save results
         depth_est = np.float32(np.squeeze(tensor2numpy(image_outputs["depth_est"])))

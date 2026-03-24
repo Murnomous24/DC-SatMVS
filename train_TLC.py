@@ -18,6 +18,7 @@ from tools.utils import *
 from dataset.data_io import save_pfm
 import matplotlib.pyplot as plt
 from networks.loss import cas_mvsnet_loss, STsatmvsloss
+from tqdm import tqdm
 
 cudnn.benchmark = True
 
@@ -63,6 +64,7 @@ parser.add_argument('--summary_freq', type=int, default=50, help='print and summ
 parser.add_argument('--save_freq', type=int, default=1, help='save checkpoint frequency')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed')
 parser.add_argument('--gpu_id', type=str, default="0")
+parser.add_argument('--use_tqdm', action='store_true', help='use tqdm progress bar instead of plain log output')
 
 # parse arguments and check
 args = parser.parse_args()
@@ -186,7 +188,12 @@ def train():
         global_step = len(TrainImgLoader) * epoch_idx
 
         # training
-        for batch_idx, sample in enumerate(TrainImgLoader):
+        if args.use_tqdm:
+            train_iter = tqdm(enumerate(TrainImgLoader), total=len(TrainImgLoader), desc=f"Training Epoch {epoch_idx}")
+        else:
+            train_iter = enumerate(TrainImgLoader)
+
+        for batch_idx, sample in train_iter:
             start_time = time.time()
             global_step = len(TrainImgLoader) * epoch_idx + batch_idx
             do_summary = global_step % args.summary_freq == 0
@@ -194,15 +201,24 @@ def train():
             if do_summary:
                 save_scalars(logger, 'train', scalar_outputs, global_step)
                 save_images(logger, 'train', image_outputs, global_step)
-            print(
-                'Epoch {}/{}, Iter {}/{}, train loss = {:.3f}, time = {:.3f}, train_result = {}'.format(
-                    epoch_idx, args.epochs, batch_idx, len(TrainImgLoader), loss,
-                    time.time() - start_time, scalar_outputs))
+
+            if args.use_tqdm:
+                train_iter.set_postfix({'loss': f'{loss:.3f}', 'time': f'{time.time() - start_time:.3f}'})
+            else:
+                print(
+                    'Epoch {}/{}, Iter {}/{}, train loss = {:.3f}, time = {:.3f}, train_result = {}'.format(
+                        epoch_idx, args.epochs, batch_idx, len(TrainImgLoader), loss,
+                        time.time() - start_time, scalar_outputs))
             del scalar_outputs, image_outputs
 
         # testing
         avg_test_scalars = DictAverageMeter()
-        for batch_idx, sample in enumerate(TestImgLoader):
+        if args.use_tqdm:
+            test_iter = tqdm(enumerate(TestImgLoader), total=len(TestImgLoader), desc=f"Testing Epoch {epoch_idx}")
+        else:
+            test_iter = enumerate(TestImgLoader)
+
+        for batch_idx, sample in test_iter:
             start_time = time.time()
             global_step = len(TrainImgLoader) * epoch_idx + batch_idx
             do_summary = global_step % args.summary_freq == 0
@@ -212,9 +228,12 @@ def train():
                 save_images(logger, 'test', image_outputs, global_step)
             avg_test_scalars.update(scalar_outputs)
 
-            print('Epoch {}/{}, Iter {}/{}, test loss = {:.3f}, time = {:3f}, {}'.format(epoch_idx, args.epochs, batch_idx,
-                                                                                     len(TestImgLoader), loss,
-                                                                                     time.time() - start_time, scalar_outputs))
+            if args.use_tqdm:
+                test_iter.set_postfix({'loss': f'{loss:.3f}', 'time': f'{time.time() - start_time:.3f}'})
+            else:
+                print('Epoch {}/{}, Iter {}/{}, test loss = {:.3f}, time = {:3f}, {}'.format(epoch_idx, args.epochs, batch_idx,
+                                                                                         len(TestImgLoader), loss,
+                                                                                         time.time() - start_time, scalar_outputs))
 
             del scalar_outputs, image_outputs
         save_scalars(logger, 'fulltest', avg_test_scalars.mean(), global_step)
@@ -245,7 +264,13 @@ def test():
     avg_test_scalars = DictAverageMeter()
 
     total_time = 0
-    for batch_idx, sample in enumerate(TestImgLoader):
+
+    if args.use_tqdm:
+        test_iter = tqdm(enumerate(TestImgLoader), total=len(TestImgLoader), desc="Testing")
+    else:
+        test_iter = enumerate(TestImgLoader)
+
+    for batch_idx, sample in test_iter:
 
         bview = sample['out_view'][0]
         bname = sample['out_name'][0]
@@ -255,8 +280,12 @@ def test():
         avg_test_scalars.update(scalar_outputs)
         scalar_outputs = {k: float("{0:.6f}".format(v)) for k, v in scalar_outputs.items()}
         total_time += time.time() - start_time
-        print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(TestImgLoader),
-                                                                       bname, time.time() - start_time, scalar_outputs))
+
+        if args.use_tqdm:
+            test_iter.set_postfix({'name': bname, 'time': f'{time.time() - start_time:.3f}'})
+        else:
+            print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(TestImgLoader),
+                                                                           bname, time.time() - start_time, scalar_outputs))
 
         # save results
         depth_est = np.float32(np.squeeze(tensor2numpy(image_outputs["depth_est"])))
