@@ -23,6 +23,24 @@ from tqdm import tqdm
 cudnn.benchmark = True
 
 
+class Logger:
+    """将 print 输出同时写入控制台和文件"""
+    def __init__(self, log_path):
+        self.terminal = sys.stdout
+        self.log = open(log_path, 'a', encoding='utf-8')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+
+
 parser = argparse.ArgumentParser(description='A PyTorch Implementation')
 parser.add_argument('--mode', default='train', help='train or test', choices=['train', 'test', 'profile'])
 # parser.add_argument('--model', default="casmvs", help='select model', choices=['red', "casmvs", "ucs"])
@@ -87,6 +105,10 @@ cur_log_dir = os.path.join(args.logdir, "{}/{}".format(args.model, args.geo_mode
 ck_dir = os.path.join(cur_log_dir, "train").replace("\\", "/")
 if not os.path.exists(ck_dir):
     os.makedirs(ck_dir)
+
+# 启用日志重定向到 train_log.txt（与 train_record.txt 同目录）
+log_file_path = os.path.join(cur_log_dir, 'train_log.txt')
+sys.stdout = Logger(log_file_path)
 
 # create logger for mode "train" and "testall"
 if args.mode == "train":
