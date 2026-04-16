@@ -12,7 +12,7 @@
 USE_TQDM=false
 
 # 基础配置
-MODEL="samsat"                    # 模型类型: samsat, red, casmvs, ucs
+MODEL="SAMsat"                    # 模型类型: samsat, red, casmvs, ucs
 GEO_MODEL="rpc"                   # 几何模型: rpc, pinhole
 GPU_ID="0"                        # GPU ID
 
@@ -34,6 +34,9 @@ DEPTH_INTER_R="4,2,1"             # 深度间隔比率
 CR_BASE_CHS="8,8,8"               # 代价正则化基础通道数
 LAMB=1.5                          # UCS-Net lambda参数
 
+# TensorBoard 参数
+SUMMARY_FREQ_SAMPLES=50                   # TensorBoard 日志记录频率（每多少样本记录一次）
+
 # ==================== 构建命令 ====================
 CMD="python predict.py \
     --model ${MODEL} \
@@ -48,6 +51,7 @@ CMD="python predict.py \
     --depth_inter_r ${DEPTH_INTER_R} \
     --cr_base_chs ${CR_BASE_CHS} \
     --lamb ${LAMB} \
+    --summary_freq_samples ${SUMMARY_FREQ_SAMPLES} \
     --gpu_id ${GPU_ID}"
 
 # 添加 tqdm 参数

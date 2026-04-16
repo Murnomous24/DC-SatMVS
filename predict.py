@@ -2,7 +2,7 @@
 import argparse
 import torch
 import os
-import datetime
+import glob
 from tensorboardX import SummaryWriter
 import sys
 from dataset import find_dataset_def
@@ -23,7 +23,7 @@ cudnn.benchmark = True
 
 
 parser = argparse.ArgumentParser(description='A PyTorch Implementation')
-parser.add_argument('--model', default="samsat", help='select model', choices=['SAMsat', 'red', "casmvs", "ucs"])
+parser.add_argument('--model', default="SAMsat", help='select model', choices=['SAMsat', 'red', "casmvs", "ucs"])
 parser.add_argument('--geo_model', default="rpc", help='select dataset', choices=["rpc", "pinhole"])
 parser.add_argument('--use_qc', default=False, help="whether to use Quaternary Cubic Form for RPC warping.")
 parser.add_argument('--dataset_root', default='/remote-home/Cs_ai_qj_new/chenziyang/MVS/MVSrs/open_dataset_rpc/test', help='dataset root')
@@ -43,6 +43,7 @@ parser.add_argument('--lamb', type=float, default=1.5, help="lamb in ucs-net")
 parser.add_argument('--cr_base_chs', type=str, default="8,8,8", help='cost regularization base channels')
 parser.add_argument('--gpu_id', type=str, default="2")
 parser.add_argument('--use_tqdm', action='store_true', help='use tqdm progress bar instead of plain log output')
+parser.add_argument('--summary_freq_samples', type=int, default=50, help='tensorboard summary frequency in prediction (unit: samples)')
 
 # parse arguments and check
 args = parser.parse_args()
@@ -51,13 +52,24 @@ os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
 # print(args.geo_model)
 # print(args.dataset_root)
-assert args.geo_model in args.dataset_root, Exception("set the wrong data root")
+# assert args.geo_model in args.dataset_root, Exception("set the wrong data root")
 # assert args.geo_model in args.loadckpt, Exception("set the wrong checkpoint")
 # assert args.model in args.loadckpt, Exception("set the wrong checkpoint")
+
+def _clear_tensorboard_events(tb_log_dir):
+    event_paths = sorted(glob.glob(os.path.join(tb_log_dir, "events.out.tfevents*")))
+    removed = 0
+    for event_path in event_paths:
+        if os.path.isfile(event_path):
+            os.remove(event_path)
+            removed += 1
+    print(f"cleared {removed} old tensorboard event file(s) in {tb_log_dir}")
 
 def predict():
     print("argv:", sys.argv[1:])
     print_args(args)
+    if args.summary_freq_samples <= 0:
+        raise ValueError("--summary_freq_samples must be > 0")
 
     # dataset, dataloader
     MVSDataset = find_dataset_def(args.geo_model)
@@ -85,7 +97,7 @@ def predict():
                                     cr_base_chs=[int(ch) for ch in args.cr_base_chs.split(",") if ch],
                                     geo_model=args.geo_model, use_qc=args.use_qc)
         print("===============> Model: Cascade RED Net ===========>")
-    elif args.model == "samsat":
+    elif args.model == "SAMsat":
         model = ST_SatMVS(min_interval=args.min_interval,
                           ndepths=[int(nd) for nd in args.ndepths.split(",") if nd],
                           depth_interals_ratio=[float(d_i) for d_i in args.depth_inter_r.split(",") if d_i],
@@ -99,22 +111,39 @@ def predict():
     model.cuda()
 
     # load checkpoint file specified by args.loadckpt
-    print("loading model {}".format(args.loadckpt))
-    state_dict = torch.load(args.loadckpt)
+    loadckpt = args.loadckpt
+    if os.path.isdir(loadckpt):
+        saved_models = [file for file in os.listdir(loadckpt) if file.endswith(".ckpt")]
+        if len(saved_models) == 0:
+            raise ValueError("No .ckpt file found in --loadckpt directory")
+        saved_models = sorted(saved_models, key=lambda x: int(x.split('_')[1].split(".")[0]))
+        loadckpt = os.path.join(loadckpt, saved_models[-1])
+
+    if not os.path.isfile(loadckpt):
+        raise ValueError("--loadckpt must be a .ckpt file or a directory containing .ckpt")
+
+    print("loading model {}".format(loadckpt))
+    state_dict = torch.load(loadckpt)
     model.load_state_dict(state_dict['model'])
     print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
 
-    # create output folder
-    # output_folder = os.path.join(args.dataset_root, 'mvs_results')
-    output_folder = os.path.join('./mvs_results')
-    if not os.path.isdir(output_folder):
-        os.mkdir(output_folder)
+    # setup tensorboard log dir
+    cur_log_dir = os.path.dirname(loadckpt)
+    pred_log_dir = os.path.join(cur_log_dir, 'predict')
+    os.makedirs(pred_log_dir, exist_ok=True)
+    print(f"log directory: {pred_log_dir}")
+
+    tb_log_dir = os.path.join(pred_log_dir, "tensorboard")
+    os.makedirs(tb_log_dir, exist_ok=True)
+    _clear_tensorboard_events(tb_log_dir)
+    logger = SummaryWriter(tb_log_dir)
+    print(f"tensorboard directory: {tb_log_dir}")
 
     avg_test_scalars = DictAverageMeter()
-    t0 = time.time()
-
-    idx = 0
+    interval_scalars = DictAverageMeter()
     total_time = 0
+    processed_samples = 0
+    next_log_step = args.summary_freq_samples
 
     if args.use_tqdm:
         pred_iter = tqdm(enumerate(Pre_ImgLoader), total=len(Pre_ImgLoader), desc="Predicting")
@@ -122,65 +151,81 @@ def predict():
         pred_iter = enumerate(Pre_ImgLoader)
 
     for batch_idx, sample in pred_iter:
-        bview = sample['out_view'][0]
-        bname = sample['out_name'][0]
-
         start_time = time.time()
         scalar_outputs, image_outputs = predict_sample(model, sample)
-        avg_test_scalars.update(scalar_outputs)
+        batch_size_cur = int(sample["imgs"].shape[0])
+        avg_test_scalars.update(scalar_outputs, weight=batch_size_cur)
         scalar_outputs = {k: float("{0:.6f}".format(v)) for k, v in scalar_outputs.items()}
+        interval_scalars.update(scalar_outputs, weight=batch_size_cur)
         total_time += time.time() - start_time
 
+        processed_samples += batch_size_cur
+        while processed_samples >= next_log_step:
+            interval_metrics = interval_scalars.mean()
+            if len(interval_metrics) > 0:
+                save_scalars(logger, 'predict', interval_metrics, next_log_step)
+            save_images(logger, 'predict', image_outputs, next_log_step)
+            interval_scalars = DictAverageMeter()
+            next_log_step += args.summary_freq_samples
+
+        first_name = str(sample['out_name'][0])
         if args.use_tqdm:
-            pred_iter.set_postfix({'name': bname, 'time': f'{time.time() - start_time:.3f}'})
+            pred_iter.set_postfix({'name': first_name, 'time': f'{time.time() - start_time:.3f}'})
         else:
-            print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(Pre_ImgLoader), bname, time.time() - start_time, scalar_outputs))
+            print("Iter {}/{}, {}, time = {:3f}, test results = {}".format(batch_idx, len(Pre_ImgLoader), first_name, time.time() - start_time, scalar_outputs))
 
-        # save results
-        depth_est = np.float32(np.squeeze(tensor2numpy(image_outputs["depth_est"])))
-        prob = np.float32(np.squeeze(tensor2numpy(image_outputs["photometric_confidence"])))
+        # save per-sample results (depth_est/confidence + color)
+        depth_est_batch = tensor2numpy(image_outputs["depth_est"])
+        prob_batch = tensor2numpy(image_outputs["photometric_confidence"])
+        batch_size = depth_est_batch.shape[0]
+        for i in range(batch_size):
+            depth_est = np.squeeze(depth_est_batch[i])
+            prob = np.float32(np.squeeze(prob_batch[i]))
+            if depth_est.ndim != 2 or prob.ndim != 2:
+                raise ValueError(
+                    "Predict output shape error at batch {}, sample {}: depth_est={}, prob={}, expected 2D maps.".format(
+                        batch_idx, i, depth_est.shape, prob.shape
+                    )
+                )
 
-        # TODO
-        depth_gt = sample['depth']['stage3']
-        mask = sample['mask']['stage3']
-        depth_gt = np.float32(np.squeeze(tensor2numpy(depth_gt)))
-        mask = (np.squeeze(tensor2numpy(mask))).astype(np.int64)
-        depth_gt[mask < 0.5] = -999.0
+            curr_b_view = str(sample['out_view'][i])
+            curr_b_name = str(sample['out_name'][i])
 
-        # paths
-        output_folder2 = output_folder + ('/%s/' % bview)
+            depth_dir = os.path.join(pred_log_dir, "depth_est", curr_b_view)
+            conf_dir = os.path.join(pred_log_dir, "confidence", curr_b_view)
+            depth_color_dir = os.path.join(depth_dir, "color")
+            conf_color_dir = os.path.join(conf_dir, "color")
+            os.makedirs(depth_dir, exist_ok=True)
+            os.makedirs(conf_dir, exist_ok=True)
+            os.makedirs(depth_color_dir, exist_ok=True)
+            os.makedirs(conf_color_dir, exist_ok=True)
 
-        if not os.path.exists(output_folder2):
-            os.mkdir(output_folder2)
-        if not os.path.exists(output_folder2 + '/prob/'):
-            os.mkdir(output_folder2 + '/prob/')
-        if not os.path.exists(output_folder2 + '/init/'):
-            os.mkdir(output_folder2 + '/init/')
-        if not os.path.exists(output_folder2 + '/prob/color/'):
-            os.mkdir(output_folder2 + '/prob/color/')
-        if not os.path.exists(output_folder2 + '/init/color/'):
-            os.mkdir(output_folder2 + '/init/color/')
+            depth_path = os.path.join(depth_dir, "{}.pfm".format(curr_b_name))
+            conf_path = os.path.join(conf_dir, "{}.pfm".format(curr_b_name))
+            depth_color_path = os.path.join(depth_color_dir, "{}.png".format(curr_b_name))
+            conf_color_path = os.path.join(conf_color_dir, "{}.png".format(curr_b_name))
 
-        init_depth_map_path = output_folder2 + ('/init/{}.pfm'.format(bname))
-        prob_map_path = output_folder2 + ('/prob/{}.pfm'.format(bname))
-
-        # save output
-        save_pfm(init_depth_map_path, depth_est)
-        save_pfm(prob_map_path, prob)
-
-        if args.geo_model == "pinhole":
-            depth_est = np.max(depth_est) - depth_est
-
-        # plt.imshow(depth_est)
-        # plt.show()
-
-        plt.imsave(output_folder2 + ('/init/color/{}.png'.format(bname)), depth_est, format='png')
-        plt.imsave(output_folder2 + ('/prob/color/{}_prob.png'.format(bname)), prob, format='png')
+            save_pfm(depth_path, depth_est.astype(np.float32))
+            save_pfm(conf_path, prob.astype(np.float32))
+            plt.imsave(depth_color_path, depth_est, format='png')
+            plt.imsave(conf_color_path, prob, format='png')
 
         del scalar_outputs, image_outputs
 
-    # print("final, time = {:3f}, test results = {}".format(time.time() - t0, avg_test_scalars.mean()))
     print("final, time = {:3f}, test results = {}".format(total_time, avg_test_scalars.mean()))
+
+    # log overall (full-dataset average) metrics to tensorboard
+    overall_step = processed_samples
+    overall_metrics = avg_test_scalars.mean()
+    if len(overall_metrics) > 0:
+        save_scalars(logger, 'overall', overall_metrics, overall_step)
+
+    # close tensorboard logger
+    logger.close()
+
+    record_path = os.path.join(pred_log_dir, 'predict_record.txt')
+    with open(record_path, "a+", encoding="utf-8") as f:
+        f.write("Predict Metrics: {}\n".format(overall_metrics))
 
 
 @make_nograd_func
@@ -200,22 +245,26 @@ def predict_sample(model, sample):
     # depth_est = outputs["stage3"]["depth_filtered"]
     photometric_confidence = outputs["stage3"]["photometric_confidence"]
 
-    image_outputs = {"depth_est": depth_est,
-                     "photometric_confidence": photometric_confidence,
-                     "ref_img": sample["imgs"][:, 0]}
+    image_outputs = {
+        "depth_est": depth_est,
+        "photometric_confidence": photometric_confidence,
+        "depth_gt": depth_gt,
+        "ref_image": sample_cuda["imgs"][:, 0],
+        "mask": mask,
+        "errormap": (depth_est - depth_gt).abs()
+    }
 
     scalar_outputs = {}
 
+    scalar_outputs["abs_depth_error"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
     scalar_outputs["MAE"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
     scalar_outputs["RMSE"] = RMSE_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
-    scalar_outputs["thres1.0m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
-    scalar_outputs["thres2.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
-    scalar_outputs["thres7.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
+    scalar_outputs["threshold_1.0m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
+    scalar_outputs["threshold_2.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
+    scalar_outputs["threshold_7.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
 
     return tensor2float(scalar_outputs), image_outputs
 
 
 if __name__ == '__main__':
     predict()
-
-

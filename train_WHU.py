@@ -60,7 +60,7 @@ parser.add_argument('--lrepochs', type=str, default="10,12,14:2",
                     help='epoch ids to downscale lr and the downscale rate')
 parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 
-parser.add_argument('--summary_freq', type=int, default=50, help='print and summary frequency')
+parser.add_argument('--summary_freq', type=int, default=50, help='train/test tensorboard summary frequency (unit: iteration steps)')
 parser.add_argument('--save_freq', type=int, default=1, help='save checkpoint frequency')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed')
 parser.add_argument('--gpu_id', type=str, default="1")
@@ -305,17 +305,20 @@ def train_sample(sample, lr_scheduler, detailed_summary=False):
     lr_scheduler.step()
 
     scalar_outputs = {"loss": loss, "depth_loss": depth_loss}
-    image_outputs = {"depth_est": depth_est, "depth_gt": depth_gt,
-                     "ref_img": sample["imgs"][:, 0],
-                     "mask": sample["mask"]["stage1"]}
+    image_outputs = {
+        "depth_est": depth_est,
+        "depth_gt": depth_gt,
+        "ref_image": sample_cuda["imgs"][:, 0],
+        "mask": mask
+    }
 
     if detailed_summary:
-        image_outputs["errormap"] = (depth_est - depth_gt).abs() * mask
+        image_outputs["errormap"] = (depth_est - depth_gt).abs()
         scalar_outputs["abs_depth_error"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
         scalar_outputs["RMSE"] = RMSE_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
-        scalar_outputs["thres1.0m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
-        scalar_outputs["thres2.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
-        scalar_outputs["thres7.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
+        scalar_outputs["1.0m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
+        scalar_outputs["2.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
+        scalar_outputs["7.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
 
 
     return tensor2float(loss), tensor2float(scalar_outputs), image_outputs
@@ -340,16 +343,20 @@ def test_sample(sample, detailed_summary=True):
     loss, depth_loss = model_loss(outputs, depth_gt_ms, mask_ms, dlossw=[float(e) for e in args.dlossw.split(",") if e], depth_values=sample_cuda["depth_values"])
 
     scalar_outputs = {"loss": loss, "depth_loss": depth_loss}
-    image_outputs = {"depth_est": depth_est,
-                     "photometric_confidence": photometric_confidence,
-                     "depth_gt": sample["depth"]["stage1"],
-                     "ref_img": sample["imgs"][:, 0],
-                     "mask": sample["mask"]["stage1"]}
+    image_outputs = {
+        "depth_est": depth_est,
+        "photometric_confidence": photometric_confidence,
+        "depth_gt": depth_gt,
+        "ref_image": sample_cuda["imgs"][:, 0],
+        "mask": mask
+    }
 
     if detailed_summary:
-        image_outputs["errormap"] = (depth_est - depth_gt).abs() * mask
+        image_outputs["errormap"] = (depth_est - depth_gt).abs()
 
-    scalar_outputs["abs_depth_acc"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
+    abs_depth_error = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
+    scalar_outputs["abs_depth_acc"] = abs_depth_error
+    scalar_outputs["abs_depth_error"] = abs_depth_error
     scalar_outputs["1.0m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)  #0.6
     scalar_outputs["2.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
     scalar_outputs["7.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
@@ -362,4 +369,3 @@ if __name__ == '__main__':
         train()
     elif args.mode == "test":
         test()
-

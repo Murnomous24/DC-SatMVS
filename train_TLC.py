@@ -78,7 +78,7 @@ parser.add_argument('--lrepochs', type=str, default="10,12,14:2",
                     help='epoch ids to downscale lr and the downscale rate')
 parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 
-parser.add_argument('--summary_freq', type=int, default=50, help='print and summary frequency')
+parser.add_argument('--summary_freq', type=int, default=50, help='train/test tensorboard summary frequency (unit: iteration steps)')
 parser.add_argument('--save_freq', type=int, default=1, help='save checkpoint frequency')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed')
 parser.add_argument('--gpu_id', type=str, default="0")
@@ -139,6 +139,7 @@ if args.model == "SAMsat":
                           depth_interals_ratio=[float(d_i) for d_i in args.depth_inter_r.split(",") if d_i],
                           cr_base_chs=[int(ch) for ch in args.cr_base_chs.split(",") if ch],
                           geo_model=args.geo_model, use_qc=args.use_qc)
+    print("===============> Model: SAMsat ===========>")
 elif args.model == "casmvs":
     model = CascadeMVSNet(min_interval=args.min_interval,
                           ndepths=[int(nd) for nd in args.ndepths.split(",") if nd],
@@ -167,8 +168,11 @@ if args.mode in ["train", "test"]:
 model.cuda()
 
 # model_loss = mvsnet_loss  # MVSNet and RMVSNet
-# model_loss = cas_mvsnet_loss    # CascadeRMVSNet
-model_loss = STsatmvsloss    # CascadeRMVSNet
+# print("===============> Loss: mvsnet_loss ===========>")
+model_loss = cas_mvsnet_loss    # CascadeRMVSNet
+print("===============> Loss: cas_mvsnet_loss ===========>")
+# model_loss = STsatmvsloss    # CascadeRMVSNet
+# print("===============> Loss: STsatmvsloss ===========>")
 # optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.wd)
 optimizer = optim.RMSprop([{'params': model.parameters(), 'initial_lr': args.lr}],
                           lr=args.lr, alpha=0.9, weight_decay=args.wd)
@@ -342,8 +346,8 @@ def train_sample(sample, lr_scheduler, detailed_summary=False):
     mask = mask_ms["stage{}".format(num_stage)]
 
     outputs = model(sample_cuda["imgs"], sample_cuda["cam_para"], sample_cuda["depth_values"])
-    # depth_est = outputs["stage3"]["depth"]
-    depth_est = outputs["stage3"]["depth_filtered"]
+    depth_est = outputs["stage3"]["depth"]
+    # depth_est = outputs["stage3"]["depth_filtered"]
 
     loss, depth_loss = model_loss(outputs, depth_gt_ms, mask_ms, dlossw=[float(e) for e in args.dlossw.split(",") if e], depth_values=sample_cuda["depth_values"])
 
@@ -353,17 +357,20 @@ def train_sample(sample, lr_scheduler, detailed_summary=False):
     lr_scheduler.step()
 
     scalar_outputs = {"loss": loss, "depth_loss": depth_loss}
-    image_outputs = {"depth_est": depth_est, "depth_gt": depth_gt,
-                     "ref_img": sample["imgs"][:, 0],
-                     "mask": sample["mask"]["stage1"]}
+    image_outputs = {
+        "depth_est": depth_est,
+        "depth_gt": depth_gt,
+        "ref_image": sample_cuda["imgs"][:, 0],
+        "mask": mask
+    }
 
     if detailed_summary:
-        image_outputs["errormap"] = (depth_est - depth_gt).abs() * mask
+        image_outputs["errormap"] = (depth_est - depth_gt).abs()
         scalar_outputs["abs_depth_error"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
         scalar_outputs["RMSE"] = RMSE_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
-        scalar_outputs["thres1.0m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
-        scalar_outputs["thres2.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
-        scalar_outputs["thres7.5m_error"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
+        scalar_outputs["1.0m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)
+        scalar_outputs["2.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
+        scalar_outputs["7.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 7.5)
 
 
     return tensor2float(loss), tensor2float(scalar_outputs), image_outputs
@@ -388,16 +395,20 @@ def test_sample(sample, detailed_summary=True):
     loss, depth_loss = model_loss(outputs, depth_gt_ms, mask_ms, dlossw=[float(e) for e in args.dlossw.split(",") if e], depth_values=sample_cuda["depth_values"])
 
     scalar_outputs = {"loss": loss, "depth_loss": depth_loss}
-    image_outputs = {"depth_est": depth_est,
-                     "photometric_confidence": photometric_confidence,
-                     "depth_gt": sample["depth"]["stage1"],
-                     "ref_img": sample["imgs"][:, 0],
-                     "mask": sample["mask"]["stage1"]}
+    image_outputs = {
+        "depth_est": depth_est,
+        "photometric_confidence": photometric_confidence,
+        "depth_gt": depth_gt,
+        "ref_image": sample_cuda["imgs"][:, 0],
+        "mask": mask
+    }
 
     if detailed_summary:
-        image_outputs["errormap"] = (depth_est - depth_gt).abs() * mask
+        image_outputs["errormap"] = (depth_est - depth_gt).abs()
 
-    scalar_outputs["abs_depth_acc"] = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
+    abs_depth_error = AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
+    scalar_outputs["abs_depth_acc"] = abs_depth_error
+    scalar_outputs["abs_depth_error"] = abs_depth_error
     scalar_outputs["RMSE"] = RMSE_metrics(depth_est, depth_gt, mask > 0.5, 250.0)
     scalar_outputs["1.0m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 1.0)  #0.6
     scalar_outputs["2.5m_acc"] = Thres_metrics(depth_est, depth_gt, mask > 0.5, 2.5)
@@ -411,4 +422,3 @@ if __name__ == '__main__':
         train()
     elif args.mode == "test":
         test()
-
